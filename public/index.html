@@ -4,8 +4,60 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gerenciador de Obras</title>
-  <link rel="stylesheet" href="style.css">
- 
+  <style>
+    /* ======== TEMA ESCURO ======== */
+    body.dark { background-color: #121212; color: #eee; }
+    body.dark .obra { background-color: #1e1e1e; box-shadow: 0 4px 8px rgba(255,255,255,0.05); }
+    body.dark .barra { background-color: #333; }
+    body.dark .progresso { color: #fff; }
+    body.dark button { background-color: #333; color: #eee; }
+    body.dark .modal-content { background-color: #1e1e1e; color: #eee; }
+    body.dark .close-btn:hover { color: #fff; }
+
+    /* ======== ESTILO GERAL ======== */
+    body { font-family: "Segoe UI", Roboto, sans-serif; padding: 20px; background-color: #f5f5f5; color: #333; }
+    h1,h2,h3,h4 { margin-bottom: 10px; }
+    form label { display: block; margin-top: 10px; }
+    input, select, button { padding: 8px; margin-top: 4px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #ccc; }
+    button { cursor: pointer; transition: all 0.2s ease; }
+    button:hover { opacity: 0.9; transform: scale(1.02); }
+
+    /* ======== CARDS DE OBRAS ======== */
+    .obra { background-color: #fff; padding: 15px; margin-bottom: 15px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); transition: transform 0.2s ease; }
+    .obra:hover { transform: translateY(-2px); }
+    #lista-obras { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+
+    /* ======== BARRA DE PROGRESSO ======== */
+    .barra { width: 100%; height: 20px; background-color: #ddd; border-radius: 10px; margin-top: 5px; overflow: hidden; }
+    .progresso { height: 100%; text-align: center; color: #fff; border-radius: 10px; line-height: 20px; transition: width 0.3s ease; }
+    .progresso[data-value="low"] { background-color: #e53935; }
+    .progresso[data-value="medium"] { background-color: #fbc02d; }
+    .progresso[data-value="high"] { background-color: #43a047; }
+
+    /* ======== BOTOES ======== */
+    .btn-editar { background-color: #1e88e5; color: #fff; margin-right: 5px; }
+    .btn-excluir { background-color: #e53935; color: #fff; }
+
+    /* ======== MODAL ======== */
+    .modal { display: none; position: fixed; top: 0; left: 0; width:100%; height:100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+    .modal.show { display: flex; }
+    .modal-content { background-color: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 500px; transform: translateY(-50px); opacity: 0; transition: all 0.3s ease; }
+    .modal.show .modal-content { transform: translateY(0); opacity: 1; }
+    .close-btn { float: right; font-size: 24px; font-weight: bold; cursor: pointer; color: #888; }
+    .close-btn:hover { color: #333; }
+
+    /* ======== TOAST ======== */
+    .toast { position: fixed; bottom: 20px; right: 20px; background-color: #4caf50; color: #fff; padding: 12px 20px; border-radius: 8px; opacity: 0; transition: opacity 0.5s; z-index: 2000; }
+    .toast.show { opacity: 1; }
+
+    /* ======== RESPONSIVIDADE ======== */
+    @media(max-width:600px){
+      body{padding:10px;}
+      .obra{padding:10px;}
+      input,select,button{width:100%;box-sizing:border-box;margin-bottom:8px;}
+      .barra{height:18px;}
+    }
+  </style>
 </head>
 <body>
 
@@ -50,154 +102,197 @@
   </div>
 </div>
 
+<div id="toast" class="toast"></div>
+
 <!-- LIBS EXPORTAÇÃO -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 
 <script>
+  // ======== VARIÁVEIS ========
   let obras = [];
-  const CACHE_KEY = 'obrasCacheV2';
+  const CACHE_KEY = 'obrasCacheFinal';
   const THEME_KEY = 'theme';
   let db;
 
-  // ======== TEMA ========
   const body = document.body;
   const toggleThemeBtn = document.getElementById('toggle-theme');
   const savedTheme = localStorage.getItem(THEME_KEY) || 'light';
   body.classList.add(savedTheme);
   toggleThemeBtn.textContent = savedTheme === 'dark' ? '☀️ Tema' : '🌙 Tema';
-  toggleThemeBtn.addEventListener('click', () => {
+
+  // ======== TOGGLE TEMA ========
+  toggleThemeBtn.addEventListener('click',()=>{
     body.classList.toggle('dark');
     body.classList.toggle('light');
-    const theme = body.classList.contains('dark') ? 'dark' : 'light';
-    localStorage.setItem(THEME_KEY, theme);
-    toggleThemeBtn.textContent = theme === 'dark' ? '☀️ Tema' : '🌙 Tema';
+    const theme = body.classList.contains('dark')?'dark':'light';
+    localStorage.setItem(THEME_KEY,theme);
+    toggleThemeBtn.textContent = theme==='dark'?'☀️ Tema':'🌙 Tema';
+    mostrarToast("Tema alterado para "+theme);
   });
 
-  // ======== MODAL ========
-  const modal = document.getElementById("modal");
-  const modalTitle = document.getElementById("modal-title");
-  const modalFields = document.getElementById("modal-fields");
-  const modalForm = document.getElementById("modal-form");
+  // ======== TOAST ========
+  function mostrarToast(msg){
+    const toast=document.getElementById("toast");
+    toast.textContent=msg;
+    toast.classList.add("show");
+    setTimeout(()=>toast.classList.remove("show"),2000);
+  }
 
-  function abrirModal(titulo, campos, onSubmit) {
-    modalTitle.textContent = titulo;
-    modalFields.innerHTML = campos;
-    modal.style.display = "flex";
+  // ======== MODAL ========
+  const modal=document.getElementById("modal");
+  const modalTitle=document.getElementById("modal-title");
+  const modalFields=document.getElementById("modal-fields");
+  const modalForm=document.getElementById("modal-form");
+
+  function abrirModal(titulo,campos,onSubmit){
+    modalTitle.textContent=titulo;
+    modalFields.innerHTML=campos;
+    modal.style.display="flex";
     modal.classList.add("show");
-    modalForm.onsubmit = (e) => {
+    modalForm.onsubmit=(e)=>{
       e.preventDefault();
-      const data = Object.fromEntries(new FormData(modalForm));
+      const data=Object.fromEntries(new FormData(modalForm));
       onSubmit(data);
       fecharModal();
     };
   }
-
-  function fecharModal() {
+  function fecharModal(){
     modal.classList.remove("show");
-    setTimeout(() => modal.style.display = "none", 300);
+    setTimeout(()=>modal.style.display="none",300);
   }
 
   // ======== CACHE ========
-  function salvarCache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify(obras)); } catch (e) { } }
-  function carregarCache() { try { const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : []; } catch (e) { return []; } }
+  function salvarCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify(obras));}catch(e){}}
+  function carregarCache(){try{const raw=localStorage.getItem(CACHE_KEY);return raw?JSON.parse(raw):[];}catch(e){return[];}}
 
   // ======== INDEXEDDB ========
-  function abrirDB() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open("GerenciadorObrasDB", 1);
-      request.onerror = (event) => reject(event);
-      request.onsuccess = (event) => { db = event.target.result; resolve(db); };
-      request.onupgradeneeded = (event) => {
-        db = event.target.result;
-        if (!db.objectStoreNames.contains("obras")) db.createObjectStore("obras", { keyPath: "id" });
+  function abrirDB(){
+    return new Promise((resolve,reject)=>{
+      const request=indexedDB.open("GerenciadorObrasDB",1);
+      request.onerror=(event)=>reject(event);
+      request.onsuccess=(event)=>{db=event.target.result;resolve(db);};
+      request.onupgradeneeded=(event)=>{
+        db=event.target.result;
+        if(!db.objectStoreNames.contains("obras")) db.createObjectStore("obras",{keyPath:"id"});
       };
     });
   }
-
-  async function salvarTudoDB() {
-    if (!db) await abrirDB();
-    const tx = db.transaction("obras", "readwrite");
-    const store = tx.objectStore("obras");
+  async function salvarTudoDB(){
+    if(!db) await abrirDB();
+    const tx=db.transaction("obras","readwrite");
+    const store=tx.objectStore("obras");
     await store.clear();
-    obras.forEach(obra => store.put(obra));
+    obras.forEach(o=>store.put(o));
     return tx.complete;
   }
-
-  async function carregarTudoDB() {
-    if (!db) await abrirDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("obras", "readonly");
-      const store = tx.objectStore("obras");
-      const request = store.getAll();
-      request.onsuccess = (e) => resolve(e.target.result);
-      request.onerror = (e) => reject(e);
+  async function carregarTudoDB(){
+    if(!db) await abrirDB();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction("obras","readonly");
+      const store=tx.objectStore("obras");
+      const request=store.getAll();
+      request.onsuccess=(e)=>resolve(e.target.result);
+      request.onerror=(e)=>reject(e);
     });
   }
 
   // ======== UTIL ========
-  function gerarId() { return Date.now() + Math.floor(Math.random() * 1000); }
-  function calcularProgressoGeral(obra) {
-    if (!obra.etapas || !obra.etapas.length) return Number(obra.progresso || 0);
-    let total = 0;
-    obra.etapas.forEach(e => { const status = (e.status || "").toLowerCase(); if (status==='concluída') total+=100; else if(status==='em andamento') total+=50; });
+  function gerarId(){return Date.now()+Math.floor(Math.random()*1000);}
+  function calcularProgressoGeral(obra){
+    if(!obra.etapas||!obra.etapas.length) return Number(obra.progresso||0);
+    let total=0;
+    obra.etapas.forEach(e=>{const s=(e.status||"").toLowerCase();if(s==="concluída") total+=100; else if(s==="em andamento") total+=50;});
     return Math.round(total/obra.etapas.length);
   }
-  function calcularOrcamentoAutomatico(obra) {
-    if (!obra.etapas || !obra.etapas.length) return obra.orcamento||0;
-    let total=0; obra.etapas.forEach(etapa => (etapa.materiais||[]).forEach(mat=>{total+=(mat.quantidade||0)*(mat.custoUnit||0)})); return total;
+  function calcularOrcamentoAutomatico(obra){
+    if(!obra.etapas||!obra.etapas.length) return obra.orcamento||0;
+    let total=0;
+    obra.etapas.forEach(etapa=>(etapa.materiais||[]).forEach(m=>{total+=(m.quantidade||0)*(m.custoUnit||0)}));
+    return total;
   }
 
   // ======== RENDER ========
-  function exibirMateriais(obra, etapa){
-    const div=document.getElementById(`materiais-${obra.id}-${etapa.id}`); if(!div)return;
-    div.innerHTML=""; (etapa.materiais||[]).forEach(mat=>{ const mDiv=document.createElement("div"); mDiv.className="material"; mDiv.innerHTML=`${mat.nome||"-"} - Qtd: ${mat.quantidade||0} - Custo: ${(mat.custoUnit||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} <button onclick="excluirMaterial(${obra.id},${etapa.id},${mat.id})">Excluir</button>`; div.appendChild(mDiv); });
+  function exibirMateriais(obra,etapa){
+    const div=document.getElementById(`materiais-${obra.id}-${etapa.id}`);
+    if(!div) return;
+    div.innerHTML="";
+    (etapa.materiais||[]).forEach(mat=>{
+      const mDiv=document.createElement("div");
+      mDiv.className="material";
+      mDiv.innerHTML=`${mat.nome||"-"} - Qtd: ${mat.quantidade||0} - Custo: ${(mat.custoUnit||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} <button onclick="excluirMaterial(${obra.id},${etapa.id},${mat.id})">Excluir</button>`;
+      div.appendChild(mDiv);
+    });
   }
 
   function exibirEtapas(obra){
-    const div=document.getElementById(`etapas-${obra.id}`); if(!div)return;
-    div.innerHTML=""; (obra.etapas||[]).forEach(etapa=>{ const eDiv=document.createElement("div"); eDiv.className="etapa"; eDiv.innerHTML=`<strong>${etapa.nome||"-"}</strong> (Status: ${etapa.status||"-"}, Prazo: ${etapa.prazo||"-"}) <button onclick="editarEtapa(${obra.id},${etapa.id})">Editar</button> <button onclick="excluirEtapa(${obra.id},${etapa.id})">Excluir</button><div id="materiais-${obra.id}-${etapa.id}"></div><button onclick="abrirModalAdicionarMaterial(${obra.id},${etapa.id})">Adicionar Material</button>`; div.appendChild(eDiv); exibirMateriais(obra,etapa); });
+    const div=document.getElementById(`etapas-${obra.id}`);
+    if(!div) return;
+    div.innerHTML="";
+    (obra.etapas||[]).forEach(etapa=>{
+      const eDiv=document.createElement("div");
+      eDiv.className="etapa";
+      eDiv.innerHTML=`<strong>${etapa.nome||"-"}</strong> (Status: ${etapa.status||"-"}) 
+        <button onclick="editarEtapa(${obra.id},${etapa.id})">Editar</button>
+        <button onclick="excluirEtapa(${obra.id},${etapa.id})">Excluir</button>
+        <div id="materiais-${obra.id}-${etapa.id}"></div>
+        <button onclick="abrirModalAdicionarMaterial(${obra.id},${etapa.id})">Adicionar Material</button>`;
+      div.appendChild(eDiv);
+      exibirMateriais(obra,etapa);
+    });
   }
 
-  function exibirObras() {
-    const lista=document.getElementById("lista-obras"); lista.innerHTML="";
+  function exibirObras(){
+    const lista=document.getElementById("lista-obras");
+    lista.innerHTML="";
     if(!obras.length){ lista.innerHTML="<p>Nenhuma obra cadastrada.</p>"; return;}
-    obras.forEach(obra=>{ const div=document.createElement("div"); div.className="obra"; const progressoSafe=calcularProgressoGeral(obra); const orcamentoSafe=calcularOrcamentoAutomatico(obra);
-    div.innerHTML=`<h3>${obra.nome||"-"}</h3>
-    <p><strong>Localização:</strong> ${obra.localizacao||"-"}</p>
-    <p><strong>Responsável:</strong> ${obra.responsavel||"-"}</p>
-    <p><strong>Status:</strong> ${obra.status||"-"}</p>
-    <p><strong>Orçamento:</strong> ${orcamentoSafe.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-    <div class="barra"><div class="progresso" style="width:${progressoSafe}%">${progressoSafe}%</div></div>
-    <button class="btn-editar" onclick="editarObra(${obra.id})">Editar</button>
-    <button class="btn-excluir" onclick="excluirObra(${obra.id})">Excluir</button>
-    <h4>Etapas</h4><div id="etapas-${obra.id}"></div>
-    <button onclick="abrirModalAdicionarEtapa(${obra.id})">Adicionar Etapa</button>`; lista.appendChild(div); exibirEtapas(obra); });
+    obras.forEach(obra=>{
+      const div=document.createElement("div");
+      div.className="obra";
+      const progressoSafe=calcularProgressoGeral(obra);
+      const orcamentoSafe=calcularOrcamentoAutomatico(obra);
+      const valorData=progressoSafe<=30?"low":progressoSafe<=70?"medium":"high";
+      div.innerHTML=`<h3>${obra.nome||"-"}</h3>
+        <p><strong>Localização:</strong> ${obra.localizacao||"-"}</p>
+        <p><strong>Responsável:</strong> ${obra.responsavel||"-"}</p>
+        <p><strong>Status:</strong> ${obra.status||"-"}</p>
+        <p><strong>Orçamento:</strong> ${orcamentoSafe.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+        <div class="barra"><div class="progresso" style="width:${progressoSafe}%" data-value="${valorData}">${progressoSafe}%</div></div>
+        <button class="btn-editar" onclick="editarObra(${obra.id})">Editar</button>
+        <button class="btn-excluir" onclick="excluirObra(${obra.id})">Excluir</button>
+        <h4>Etapas</h4><div id="etapas-${obra.id}"></div>
+        <button onclick="abrirModalAdicionarEtapa(${obra.id})">Adicionar Etapa</button>`;
+      lista.appendChild(div);
+      exibirEtapas(obra);
+    });
     salvarCache();
     salvarTudoDB();
   }
 
-  // ======== CRUD OBRAS ========
-  document.getElementById("form-obra").addEventListener("submit", e=>{
+  // ======== CRUD ========
+  document.getElementById("form-obra").addEventListener("submit",e=>{
     e.preventDefault();
     const novaObra={
-      id: gerarId(),
-      nome: document.getElementById("nome").value,
-      localizacao: document.getElementById("localizacao").value,
-      responsavel: document.getElementById("responsavel").value,
-      status: document.getElementById("status").value,
-      progresso: parseInt(document.getElementById("progresso").value),
-      orcamento: parseFloat(document.getElementById("orcamento").value)||0,
+      id:gerarId(),
+      nome:document.getElementById("nome").value,
+      localizacao:document.getElementById("localizacao").value,
+      responsavel:document.getElementById("responsavel").value,
+      status:document.getElementById("status").value,
+      progresso:parseInt(document.getElementById("progresso").value),
+      orcamento:parseFloat(document.getElementById("orcamento").value)||0,
       etapas:[]
     };
-    obras.push(novaObra); exibirObras(); e.target.reset();
+    obras.push(novaObra);
+    exibirObras();
+    e.target.reset();
+    mostrarToast("Obra cadastrada com sucesso!");
   });
 
-  async function excluirObra(id){ if(!confirm("Tem certeza que deseja excluir esta obra?")) return; obras=obras.filter(o=>o.id!==id); exibirObras(); }
-
+  async function excluirObra(id){if(!confirm("Excluir esta obra?"))return;obras=obras.filter(o=>o.id!==id);exibirObras();mostrarToast("Obra excluída!");}
   async function editarObra(id){
-    const obra=obras.find(o=>o.id===id); if(!obra) return;
+    const obra=obras.find(o=>o.id===id);
+    if(!obra)return;
     abrirModal("Editar Obra",`
       <label>Nome:</label><input type="text" name="nome" value="${obra.nome}" required>
       <label>Localização:</label><input type="text" name="localizacao" value="${obra.localizacao}" required>
@@ -210,7 +305,7 @@
       </select>
       <label>Progresso (%):</label><input type="number" name="progresso" min="0" max="100" value="${obra.progresso}">
       <label>Orçamento (R$):</label><input type="number" name="orcamento" min="0" value="${obra.orcamento}">
-    `, data=>{ obra.nome=data.nome; obra.localizacao=data.localizacao; obra.responsavel=data.responsavel; obra.status=data.status; obra.progresso=parseInt(data.progresso); obra.orcamento=parseFloat(data.orcamento); exibirObras(); });
+    `,data=>{obra.nome=data.nome;obra.localizacao=data.localizacao;obra.responsavel=data.responsavel;obra.status=data.status;obra.progresso=parseInt(data.progresso);obra.orcamento=parseFloat(data.orcamento);exibirObras();mostrarToast("Obra editada!");});
   }
 
   function abrirModalAdicionarEtapa(obraId){
@@ -223,29 +318,21 @@
         <option value="Em andamento">Em andamento</option>
         <option value="Concluída">Concluída</option>
       </select>
-    `, data=>{ obra.etapas.push({id:gerarId(), nome:data.nome, status:data.status, materiais:[]}); exibirObras(); });
+    `,data=>{obra.etapas.push({id:gerarId(),nome:data.nome,status:data.status,materiais:[]});exibirObras();mostrarToast("Etapa adicionada!");});
   }
 
-  function abrirModalAdicionarMaterial(obraId, etapaId){
+  function abrirModalAdicionarMaterial(obraId,etapaId){
     const obra=obras.find(o=>o.id===obraId);
     const etapa=obra.etapas.find(e=>e.id===etapaId);
     abrirModal("Adicionar Material",`
       <label>Nome do Material:</label><input type="text" name="nome" required>
       <label>Quantidade:</label><input type="number" name="quantidade" required>
       <label>Custo Unitário:</label><input type="number" name="custo" required>
-    `, data=>{ etapa.materiais.push({id:gerarId(), nome:data.nome, quantidade:parseFloat(data.quantidade), custoUnit:parseFloat(data.custo)}); exibirObras(); });
+    `,data=>{etapa.materiais.push({id:gerarId(),nome:data.nome,quantidade:parseFloat(data.quantidade),custoUnit:parseFloat(data.custo)});exibirObras();mostrarToast("Material adicionado!");});
   }
 
-  async function excluirEtapa(obraId, etapaId){
-    if(!confirm("Excluir etapa e todos os materiais?")) return;
-    const obra=obras.find(o=>o.id===obraId);
-    obra.etapas=obra.etapas.filter(e=>e.id!==etapaId);
-    exibirObras();
-  }
-
-  async function editarEtapa(obraId, etapaId){
-    const obra=obras.find(o=>o.id===obraId);
-    const etapa=obra.etapas.find(e=>e.id===etapaId);
+  async function excluirEtapa(obraId,etapaId){if(!confirm("Excluir etapa e materiais?"))return;const obra=obras.find(o=>o.id===obraId);obra.etapas=obra.etapas.filter(e=>e.id!==etapaId);exibirObras();mostrarToast("Etapa excluída!");}
+  async function editarEtapa(obraId,etapaId){const obra=obras.find(o=>o.id===obraId);const etapa=obra.etapas.find(e=>e.id===etapaId);
     abrirModal("Editar Etapa",`
       <label>Nome:</label><input type="text" name="nome" value="${etapa.nome}" required>
       <label>Status:</label>
@@ -254,65 +341,57 @@
         <option value="Em andamento" ${etapa.status==="Em andamento"?"selected":""}>Em andamento</option>
         <option value="Concluída" ${etapa.status==="Concluída"?"selected":""}>Concluída</option>
       </select>
-    `, data=>{ etapa.nome=data.nome; etapa.status=data.status; exibirObras(); });
+    `,data=>{etapa.nome=data.nome;etapa.status=data.status;exibirObras();mostrarToast("Etapa editada!");});
   }
 
-  async function excluirMaterial(obraId, etapaId, materialId){
-    if(!confirm("Excluir material?")) return;
-    const obra=obras.find(o=>o.id===obraId);
-    const etapa=obra.etapas.find(e=>e.id===etapaId);
-    etapa.materiais=etapa.materiais.filter(m=>m.id!==materialId);
-    exibirObras();
-  }
+  async function excluirMaterial(obraId,etapaId,materialId){if(!confirm("Excluir material?"))return;const obra=obras.find(o=>o.id===obraId);const etapa=obra.etapas.find(e=>e.id===etapaId);etapa.materiais=etapa.materiais.filter(m=>m.id!==materialId);exibirObras();mostrarToast("Material excluído!");}
 
   // ======== EXPORTAÇÃO ========
   function exportarExcel(){
-    if(!obras.length){ alert("Nenhuma obra para exportar!"); return;}
+    if(!obras.length){alert("Nenhuma obra para exportar!"); return;}
     const dados=[];
     obras.forEach(obra=>{
       dados.push({Obra:obra.nome, Localizacao:obra.localizacao, Responsavel:obra.responsavel, Status:obra.status, Progresso:obra.progresso, Orcamento:obra.orcamento});
       (obra.etapas||[]).forEach(etapa=>{
-        dados.push({Obra:"→ "+etapa.nome, Localizacao:etapa.status, Responsavel:"", Status:"", Progresso:"", Orcamento:""});
+        dados.push({Obra:"→ "+etapa.nome, Localizacao:etapa.status});
         (etapa.materiais||[]).forEach(mat=>{
-          dados.push({Obra:"   - "+mat.nome, Localizacao:"Qtd: "+mat.quantidade, Responsavel:"Custo: "+mat.custoUnit.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), Status:"", Progresso:"", Orcamento:""});
+          dados.push({Obra:"   - "+mat.nome, Localizacao:"Qtd: "+mat.quantidade, Responsavel:"Custo: "+mat.custoUnit.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})});
         });
       });
     });
     const ws=XLSX.utils.json_to_sheet(dados);
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Obras");
-    XLSX.writeFile(wb, "obras.xlsx");
+    XLSX.utils.book_append_sheet(wb,ws,"Obras");
+    XLSX.writeFile(wb,"obras.xlsx");
+    mostrarToast("Excel exportado!");
   }
 
   function exportarPDF(){
-    if(!obras.length){ alert("Nenhuma obra para exportar!"); return;}
+    if(!obras.length){alert("Nenhuma obra para exportar!"); return;}
     const { jsPDF }=window.jspdf;
     const doc=new jsPDF();
-    let dados=[];
+    const dados=[];
     obras.forEach(obra=>{
-      dados.push([obra.nome, obra.localizacao, obra.responsavel, obra.status, obra.progresso+"%", obra.orcamento.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})]);
+      dados.push([obra.nome,obra.localizacao,obra.responsavel,obra.status,obra.progresso+"%",obra.orcamento.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})]);
       (obra.etapas||[]).forEach(etapa=>{
-        dados.push(["→ "+etapa.nome, etapa.status, "", "", "", ""]);
+        dados.push(["→ "+etapa.nome,etapa.status,"","","",""]);
         (etapa.materiais||[]).forEach(mat=>{
-          dados.push(["   - "+mat.nome, "Qtd: "+mat.quantidade, "Custo: "+mat.custoUnit.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), "", "", ""]);
+          dados.push(["   - "+mat.nome,"Qtd: "+mat.quantidade,"Custo: "+mat.custoUnit.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}),"","",""]);
         });
       });
     });
-    doc.autoTable({ head:[["Obra/Etapa/Material","Status","Responsável","Campo4","Progresso","Orçamento"]], body:dados, startY:20, theme:'grid' });
+    doc.autoTable({head:[["Obra/Etapa/Material","Status","Responsável","Campo4","Progresso","Orçamento"]],body:dados,startY:20,theme:'grid'});
     doc.save("obras.pdf");
+    mostrarToast("PDF exportado!");
   }
-  
+
   // ======== INICIALIZAÇÃO ========
   (async()=>{
-    // LocalStorage
     const cacheInicial=carregarCache();
-    if(cacheInicial.length){ obras=cacheInicial; exibirObras(); }
-
-    // IndexedDB
+    if(cacheInicial.length){obras=cacheInicial;exibirObras();}
     const dbObras=await carregarTudoDB();
-    if(dbObras.length){ obras=dbObras; exibirObras(); salvarCache(); }
+    if(dbObras.length){obras=dbObras;exibirObras();salvarCache();}
   })();
-
 </script>
 
 </body>
