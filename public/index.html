@@ -163,9 +163,20 @@
     setTimeout(()=>modal.style.display="none",300);
   }
 
-  // ======== CACHE ========
-  function salvarCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify(obras));}catch(e){}}
-  function carregarCache(){try{const raw=localStorage.getItem(CACHE_KEY);return raw?JSON.parse(raw):[];}catch(e){return[];}}
+  // ======== LOCALSTORAGE ========
+  function salvarObras(){
+    try{
+      localStorage.setItem(CACHE_KEY,JSON.stringify(obras));
+    }catch(e){}
+  }
+  function carregarObras(){
+    try{
+      const raw=localStorage.getItem(CACHE_KEY);
+      return raw?JSON.parse(raw):[];
+    }catch(e){
+      return [];
+    }
+  }
 
   // ======== INDEXEDDB ========
   function abrirDB(){
@@ -203,13 +214,19 @@
   function calcularProgressoGeral(obra){
     if(!obra.etapas||!obra.etapas.length) return Number(obra.progresso||0);
     let total=0;
-    obra.etapas.forEach(e=>{const s=(e.status||"").toLowerCase();if(s==="concluída") total+=100; else if(s==="em andamento") total+=50;});
+    obra.etapas.forEach(e=>{
+      const s=(e.status||"").toLowerCase();
+      if(s==="concluída") total+=100; 
+      else if(s==="em andamento") total+=50;
+    });
     return Math.round(total/obra.etapas.length);
   }
   function calcularOrcamentoAutomatico(obra){
     if(!obra.etapas||!obra.etapas.length) return obra.orcamento||0;
     let total=0;
-    obra.etapas.forEach(etapa=>(etapa.materiais||[]).forEach(m=>{total+=(m.quantidade||0)*(m.custoUnit||0)}));
+    obra.etapas.forEach(etapa=>(etapa.materiais||[]).forEach(m=>{
+      total+=(m.quantidade||0)*(m.custoUnit||0)
+    }));
     return total;
   }
 
@@ -221,7 +238,8 @@
     (etapa.materiais||[]).forEach(mat=>{
       const mDiv=document.createElement("div");
       mDiv.className="material";
-      mDiv.innerHTML=`${mat.nome||"-"} - Qtd: ${mat.quantidade||0} - Custo: ${(mat.custoUnit||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} <button onclick="excluirMaterial(${obra.id},${etapa.id},${mat.id})">Excluir</button>`;
+      mDiv.innerHTML=`${mat.nome||"-"} - Qtd: ${mat.quantidade||0} - Custo: ${(mat.custoUnit||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} 
+        <button onclick="excluirMaterial(${obra.id},${etapa.id},${mat.id})">Excluir</button>`;
       div.appendChild(mDiv);
     });
   }
@@ -266,7 +284,7 @@
       lista.appendChild(div);
       exibirEtapas(obra);
     });
-    salvarCache();
+    salvarObras();   // <<<<<< SALVA NO LOCALSTORAGE
     salvarTudoDB();
   }
 
@@ -289,7 +307,13 @@
     mostrarToast("Obra cadastrada com sucesso!");
   });
 
-  async function excluirObra(id){if(!confirm("Excluir esta obra?"))return;obras=obras.filter(o=>o.id!==id);exibirObras();mostrarToast("Obra excluída!");}
+  async function excluirObra(id){
+    if(!confirm("Excluir esta obra?"))return;
+    obras=obras.filter(o=>o.id!==id);
+    exibirObras();
+    mostrarToast("Obra excluída!");
+  }
+
   async function editarObra(id){
     const obra=obras.find(o=>o.id===id);
     if(!obra)return;
@@ -305,7 +329,16 @@
       </select>
       <label>Progresso (%):</label><input type="number" name="progresso" min="0" max="100" value="${obra.progresso}">
       <label>Orçamento (R$):</label><input type="number" name="orcamento" min="0" value="${obra.orcamento}">
-    `,data=>{obra.nome=data.nome;obra.localizacao=data.localizacao;obra.responsavel=data.responsavel;obra.status=data.status;obra.progresso=parseInt(data.progresso);obra.orcamento=parseFloat(data.orcamento);exibirObras();mostrarToast("Obra editada!");});
+    `,data=>{
+      obra.nome=data.nome;
+      obra.localizacao=data.localizacao;
+      obra.responsavel=data.responsavel;
+      obra.status=data.status;
+      obra.progresso=parseInt(data.progresso);
+      obra.orcamento=parseFloat(data.orcamento);
+      exibirObras();
+      mostrarToast("Obra editada!");
+    });
   }
 
   function abrirModalAdicionarEtapa(obraId){
@@ -318,7 +351,11 @@
         <option value="Em andamento">Em andamento</option>
         <option value="Concluída">Concluída</option>
       </select>
-    `,data=>{obra.etapas.push({id:gerarId(),nome:data.nome,status:data.status,materiais:[]});exibirObras();mostrarToast("Etapa adicionada!");});
+    `,data=>{
+      obra.etapas.push({id:gerarId(),nome:data.nome,status:data.status,materiais:[]});
+      exibirObras();
+      mostrarToast("Etapa adicionada!");
+    });
   }
 
   function abrirModalAdicionarMaterial(obraId,etapaId){
@@ -328,11 +365,24 @@
       <label>Nome do Material:</label><input type="text" name="nome" required>
       <label>Quantidade:</label><input type="number" name="quantidade" required>
       <label>Custo Unitário:</label><input type="number" name="custo" required>
-    `,data=>{etapa.materiais.push({id:gerarId(),nome:data.nome,quantidade:parseFloat(data.quantidade),custoUnit:parseFloat(data.custo)});exibirObras();mostrarToast("Material adicionado!");});
+    `,data=>{
+      etapa.materiais.push({id:gerarId(),nome:data.nome,quantidade:parseFloat(data.quantidade),custoUnit:parseFloat(data.custo)});
+      exibirObras();
+      mostrarToast("Material adicionado!");
+    });
   }
 
-  async function excluirEtapa(obraId,etapaId){if(!confirm("Excluir etapa e materiais?"))return;const obra=obras.find(o=>o.id===obraId);obra.etapas=obra.etapas.filter(e=>e.id!==etapaId);exibirObras();mostrarToast("Etapa excluída!");}
-  async function editarEtapa(obraId,etapaId){const obra=obras.find(o=>o.id===obraId);const etapa=obra.etapas.find(e=>e.id===etapaId);
+  async function excluirEtapa(obraId,etapaId){
+    if(!confirm("Excluir etapa e materiais?"))return;
+    const obra=obras.find(o=>o.id===obraId);
+    obra.etapas=obra.etapas.filter(e=>e.id!==etapaId);
+    exibirObras();
+    mostrarToast("Etapa excluída!");
+  }
+
+  async function editarEtapa(obraId,etapaId){
+    const obra=obras.find(o=>o.id===obraId);
+    const etapa=obra.etapas.find(e=>e.id===etapaId);
     abrirModal("Editar Etapa",`
       <label>Nome:</label><input type="text" name="nome" value="${etapa.nome}" required>
       <label>Status:</label>
@@ -341,10 +391,22 @@
         <option value="Em andamento" ${etapa.status==="Em andamento"?"selected":""}>Em andamento</option>
         <option value="Concluída" ${etapa.status==="Concluída"?"selected":""}>Concluída</option>
       </select>
-    `,data=>{etapa.nome=data.nome;etapa.status=data.status;exibirObras();mostrarToast("Etapa editada!");});
+    `,data=>{
+      etapa.nome=data.nome;
+      etapa.status=data.status;
+      exibirObras();
+      mostrarToast("Etapa editada!");
+    });
   }
 
-  async function excluirMaterial(obraId,etapaId,materialId){if(!confirm("Excluir material?"))return;const obra=obras.find(o=>o.id===obraId);const etapa=obra.etapas.find(e=>e.id===etapaId);etapa.materiais=etapa.materiais.filter(m=>m.id!==materialId);exibirObras();mostrarToast("Material excluído!");}
+  async function excluirMaterial(obraId,etapaId,materialId){
+    if(!confirm("Excluir material?"))return;
+    const obra=obras.find(o=>o.id===obraId);
+    const etapa=obra.etapas.find(e=>e.id===etapaId);
+    etapa.materiais=etapa.materiais.filter(m=>m.id!==materialId);
+    exibirObras();
+    mostrarToast("Material excluído!");
+  }
 
   // ======== EXPORTAÇÃO ========
   function exportarExcel(){
@@ -376,7 +438,7 @@
       (obra.etapas||[]).forEach(etapa=>{
         dados.push(["→ "+etapa.nome,etapa.status,"","","",""]);
         (etapa.materiais||[]).forEach(mat=>{
-          dados.push(["   - "+mat.nome,"Qtd: "+mat.quantidade,"Custo: "+mat.custoUnit.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}),"","",""]);
+       dados.push(["   - "+mat.nome,"Qtd: "+mat.quantidade,"Custo: "+mat.custoUnit.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}),"","",""]);
         });
       });
     });
@@ -387,12 +449,13 @@
 
   // ======== INICIALIZAÇÃO ========
   (async()=>{
-    const cacheInicial=carregarCache();
+    const cacheInicial=carregarObras(); // <<<<<< CARREGA LOCALSTORAGE
     if(cacheInicial.length){obras=cacheInicial;exibirObras();}
     const dbObras=await carregarTudoDB();
-    if(dbObras.length){obras=dbObras;exibirObras();salvarCache();}
+    if(dbObras.length){obras=dbObras;exibirObras();salvarObras();}
   })();
 </script>
+
 
 </body>
 </html>
