@@ -1,18 +1,20 @@
+// ====================== IMPORTS ======================
 const express = require("express");
 const cors = require("cors");
 
 const app = express();
 const port = 3000;
 
+// ====================== MIDDLEWARE ======================
 app.use(cors());
 app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static("frontend")); // pasta onde estão HTML, CSS e JS
 
-// Banco de dados em memória
+// ====================== BANCO DE DADOS EM MEMÓRIA ======================
 let obras = [];
 let proximoIdObra = 1;
 
-// ====================== ROTAS ======================
+// ====================== ROTAS OBRAS ======================
 
 // Listar todas as obras
 app.get("/obras", (req, res) => {
@@ -34,7 +36,7 @@ app.post("/obras", (req, res) => {
     responsavel: responsavel || null,
     status,
     progresso,
-    etapas: [] // cada obra terá suas etapas
+    etapas: []
   };
 
   obras.push(novaObra);
@@ -61,7 +63,7 @@ app.put("/obras/:id", (req, res) => {
   res.json(obra);
 });
 
-// Excluir obra (inclui etapas e materiais)
+// Excluir obra
 app.delete("/obras/:id", (req, res) => {
   const id = parseInt(req.params.id);
   const index = obras.findIndex(o => o.id === id);
@@ -71,7 +73,7 @@ app.delete("/obras/:id", (req, res) => {
   res.json({ mensagem: "Obra excluída com todas as etapas e materiais." });
 });
 
-// ====================== ETAPAS ======================
+// ====================== ROTAS ETAPAS ======================
 
 // Adicionar etapa a uma obra
 app.post("/obras/:id/etapas", (req, res) => {
@@ -82,13 +84,7 @@ app.post("/obras/:id/etapas", (req, res) => {
   const { nome, prazo, status } = req.body;
   if (!nome || !status) return res.status(400).json({ mensagem: "Dados inválidos." });
 
-  const novaEtapa = {
-    id: Date.now(),
-    nome,
-    prazo: prazo || null,
-    status,
-    materiais: []
-  };
+  const novaEtapa = { id: Date.now(), nome, prazo: prazo || null, status, materiais: [] };
 
   obra.etapas.push(novaEtapa);
   res.status(201).json(novaEtapa);
@@ -128,9 +124,9 @@ app.delete("/obras/:id/etapas/:etapaId", (req, res) => {
   res.json({ mensagem: "Etapa excluída com todos os materiais." });
 });
 
-// ====================== MATERIAIS ======================
+// ====================== ROTAS MATERIAIS ======================
 
-// Adicionar material a uma etapa
+// Adicionar material
 app.post("/obras/:id/etapas/:etapaId/materiais", (req, res) => {
   const id = parseInt(req.params.id);
   const etapaId = parseInt(req.params.etapaId);

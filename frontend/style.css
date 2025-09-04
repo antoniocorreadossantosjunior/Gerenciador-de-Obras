@@ -1,99 +1,112 @@
 /* ======== TEMA ESCURO ======== */
+/* Define cores e estilos quando o body possui a classe dark */
 body.dark {
-  background-color: #121212;
-  color: #eee;
+  background-color: #121212; /* Fundo geral escuro */
+  color: #eee; /* Cor do texto clara */
 }
 
+/* Estilo dos cards de obra no tema escuro */
 body.dark .obra {
-  background-color: #1e1e1e;
-  box-shadow: 0 4px 8px rgba(255,255,255,0.05);
+  background-color: #1e1e1e; /* Card mais escuro */
+  box-shadow: 0 4px 8px rgba(255,255,255,0.05); /* Sombra suave clara */
 }
 
+/* Barra de progresso escura */
 body.dark .barra {
   background-color: #333;
 }
 
+/* Cor do texto da barra de progresso */
 body.dark .progresso {
   color: #fff;
 }
 
+/* Botões no tema escuro */
 body.dark button {
   background-color: #333;
   color: #eee;
 }
 
+/* Modal no tema escuro */
 body.dark .modal-content {
   background-color: #1e1e1e;
   color: #eee;
 }
 
+/* Hover do botão de fechar modal */
 body.dark .close-btn:hover {
   color: #fff;
 }
 
 /* ======== ESTILO GERAL ======== */
 body {
-  font-family: "Segoe UI", Roboto, sans-serif;
-  padding: 20px;
-  background-color: #f5f5f5;
-  color: #333;
+  font-family: "Segoe UI", Roboto, sans-serif; /* Fonte moderna e legível */
+  padding: 20px; /* Espaçamento interno da página */
+  background-color: #f5f5f5; /* Fundo padrão claro */
+  color: #333; /* Cor do texto padrão */
 }
 
 h1, h2, h3, h4 {
-  margin-bottom: 10px;
+  margin-bottom: 10px; /* Espaço abaixo dos títulos */
 }
 
+/* Labels do formulário */
 form label {
-  display: block;
+  display: block; /* Quebra de linha antes do input */
   margin-top: 10px;
 }
 
+/* Inputs, selects e botões */
 input, select, button {
-  padding: 8px;
+  padding: 8px; /* Espaçamento interno */
   margin-top: 4px;
   margin-bottom: 10px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
+  border-radius: 6px; /* Bordas arredondadas */
+  border: 1px solid #ccc; /* Borda cinza clara */
 }
 
+/* Botões gerais */
 button {
-  cursor: pointer;
+  cursor: pointer; /* Muda cursor ao passar */
   padding: 8px 12px;
   border: none;
   border-radius: 6px;
-  transition: all 0.2s ease;
+  transition: all 0.2s ease; /* Animação suave */
 }
 
+/* Hover dos botões */
 button:hover {
   opacity: 0.9;
-  transform: scale(1.02);
+  transform: scale(1.02); /* Leve aumento ao passar */
 }
 
+/* Cards de obra */
 .obra {
   background-color: #fff;
   padding: 15px;
   margin-bottom: 15px;
   border-radius: 10px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Sombra suave */
   transition: transform 0.2s ease;
 }
 
+/* Hover dos cards */
 .obra:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px); /* Leve elevação */
 }
 
 /* ======== GRID DE OBRAS ======== */
 #lista-obras {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Grid responsivo */
+  gap: 20px; /* Espaço entre cards */
 }
 
 /* ======== BARRA DE PROGRESSO ======== */
 .barra {
   width: 100%;
   height: 20px;
-  background-color: #ddd;
+  background-color: #ddd; /* Cor de fundo da barra */
   border-radius: 10px;
   margin-top: 5px;
   overflow: hidden;
@@ -102,23 +115,25 @@ button:hover {
 .progresso {
   height: 100%;
   text-align: center;
-  color: #fff;
+  color: #fff; /* Texto da barra */
   border-radius: 10px;
-  line-height: 20px;
-  transition: width 0.3s ease;
+  line-height: 20px; /* Centraliza texto verticalmente */
+  transition: width 0.3s ease; /* Animação da barra */
 }
 
-/* cores dinâmicas da barra */
+/* Cores dinâmicas da barra por progresso */
 .progresso[data-value="low"] { background-color: #e53935; }   /* até 30% */
 .progresso[data-value="medium"] { background-color: #fbc02d; } /* 31-70% */
 .progresso[data-value="high"] { background-color: #43a047; }   /* acima 70% */
 
+/* Botão editar */
 .btn-editar {
   background-color: #1e88e5;
   color: #fff;
   margin-right: 5px;
 }
 
+/* Botão excluir */
 .btn-excluir {
   background-color: #e53935;
   color: #fff;
@@ -126,14 +141,14 @@ button:hover {
 
 /* ======== MODAL ======== */
 .modal {
-  display: none;
-  position: fixed;
+  display: none; /* Inicialmente escondido */
+  position: fixed; /* Fixa na tela */
   top: 0; left: 0;
   width: 100%; height: 100%;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.5); /* Fundo semi-transparente */
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 1000; /* Fica acima de outros elementos */
 }
 
 .modal.show {
@@ -153,7 +168,7 @@ button:hover {
 
 .modal.show .modal-content {
   transform: translateY(0);
-  opacity: 1;
+  opacity: 1; /* Animação de entrada do modal */
 }
 
 .close-btn {
@@ -173,7 +188,7 @@ button:hover {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  background-color: #4caf50;
+  background-color: #4caf50; /* Verde padrão */
   color: #fff;
   padding: 12px 20px;
   border-radius: 8px;
