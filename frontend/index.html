@@ -1,0 +1,791 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gerenciador de Obras</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+        <h1>Gerenciador de Obras</h1>
+
+  <nav>
+    <button onclick="mostrarTela('obras')">Obras</button>
+    <button onclick="mostrarTela('etapas')">Etapas</button>
+    <button onclick="mostrarTela('materiais')">Materiais</button>
+    <button id="toggleThemeBtn" type="button">🌙 Tema</button>
+  </nav>
+
+  <!-- TELA OBRAS -->
+  <div id="tela-obras" class="tela active">
+    <h2>Obras</h2>
+    <form id="formObra">
+      <input id="nome" placeholder="Nome da obra" required />
+      <input id="localizacao" placeholder="Localização" required />
+      <input id="responsavel" placeholder="Responsável" />
+      <select id="status">
+        <option>Inicial</option>
+        <option>Em andamento</option>
+        <option>Concluída</option>
+      </select>
+      <input id="progresso" type="number" placeholder="Progresso (%)" min="0" max="100" />
+      <input id="orcamento" type="text" placeholder="Orçamento (R$)" />
+      <button type="submit">Adicionar Obra</button>
+    </form>
+
+    <div style="margin-top:8px">
+      <button onclick="exportarPDF()">Exportar PDF (demo)</button>
+      <button onclick="exportarExcel()">Exportar Excel (demo)</button>
+    </div>
+
+    <div id="listaObras" style="margin-top:12px"></div>
+  </div>
+<!-- MODAL -->
+<div id="modal" class="modal">
+  <div class="modal-content">
+    <h3 id="modalTitle"></h3>
+    <form id="modalForm">
+      <div id="modalFields"></div>
+      <button type="submit">Salvar</button>
+      <button type="button" onclick="fecharModal()">Cancelar</button>
+    </form>
+  </div>
+</div>
+  <div id="toast" class="toast"></div>
+  <body>
+  ...
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.6.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script>
+    // SEU CÓDIGO JS AQUI
+  </script>
+</body>
+
+    <script>
+      /* ================== VARIÁVEIS GLOBAIS ================== */
+      let obras = []; // array de obras
+      const CACHE_KEY = "obrasCacheFinal";
+      const THEME_KEY = "theme";
+      let db; // referência do IndexedDB
+
+      // elementos principais
+      const body = document.body;
+      const toggleThemeBtn = document.getElementById("toggleThemeBtn");
+      const listaObrasDiv = document.getElementById("listaObras");
+      const modal = document.getElementById("modal");
+      const modalTitle = document.getElementById("modalTitle");
+      const modalFields = document.getElementById("modalFields");
+      const modalForm = document.getElementById("modalForm");
+
+      /* ================== TROCAR TELAS ================== */
+      function mostrarTela(nomeTela) {
+        document
+          .querySelectorAll(".tela")
+          .forEach((t) => (t.style.display = "none"));
+        const el = document.getElementById(`tela-${nomeTela}`);
+        if (el) el.style.display = "block";
+      }
+      function formatarOrcamento(valor) {
+        if (!valor) return 0;
+
+        // Remove pontos de milhar
+        valor = valor.replace(/\./g, "");
+
+        // Troca vírgula por ponto
+        valor = valor.replace(",", ".");
+
+        return parseFloat(valor);
+      }
+
+      /* ================== TEMA ================== */
+      const savedTheme = localStorage.getItem(THEME_KEY) || "light";
+      body.classList.add(savedTheme);
+      if (toggleThemeBtn) {
+        toggleThemeBtn.textContent =
+          savedTheme === "dark" ? "☀️ Tema" : "🌙 Tema";
+        toggleThemeBtn.addEventListener("click", () => {
+          body.classList.toggle("dark");
+          body.classList.toggle("light");
+          const theme = body.classList.contains("dark") ? "dark" : "light";
+          localStorage.setItem(THEME_KEY, theme);
+          toggleThemeBtn.textContent = theme === "dark" ? "☀️ Tema" : "🌙 Tema";
+          mostrarToast("Tema alterado para " + theme);
+        });
+      }
+      // === MÁSCARA AUTOMÁTICA NO CAMPO ORÇAMENTO ===
+      const orcamentoInput = document.getElementById("orcamento");
+
+      orcamentoInput.addEventListener("input", () => {
+        let valor = orcamentoInput.value;
+
+        // Remove tudo que não for número
+        valor = valor.replace(/\D/g, "");
+
+        if (!valor) {
+          orcamentoInput.value = "";
+          return;
+        }
+
+        // Divide por 100 para ter 2 casas decimais
+        valor = (parseInt(valor) / 100).toFixed(2);
+
+        // Troca ponto decimal por vírgula
+        valor = valor.replace(".", ",");
+
+        // Coloca pontos de milhar
+        valor = valor.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+        orcamentoInput.value = valor;
+      });
+
+      // === FUNÇÃO ADICIONAR OBRA ===
+      document.getElementById("formObra").addEventListener("submit", (e) => {
+        e.preventDefault();
+
+        const novaObra = {
+          id: gerarId(),
+          nome: document.getElementById("nome").value,
+          localizacao: document.getElementById("localizacao").value,
+          responsavel: document.getElementById("responsavel").value,
+          status: document.getElementById("status").value,
+          progresso: parseInt(document.getElementById("progresso").value) || 0,
+          orcamento:
+            formatarOrcamento(document.getElementById("orcamento").value) || 0,
+          etapas: [],
+        };
+
+        obras.push(novaObra);
+        atualizarTela();
+        e.target.reset();
+        mostrarToast("Obra cadastrada com sucesso!");
+      });
+
+      /* ================== FUNÇÃO AUXILIAR BOTÃO ================== */
+      function criarBotao(texto, classe, aoClicar) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = texto;
+        btn.className = classe || "";
+        btn.addEventListener("click", aoClicar);
+        return btn;
+      }
+
+      /* ================== TOAST ================== */
+      function mostrarToast(msg) {
+        const toast = document.getElementById("toast");
+        if (!toast) return;
+        toast.textContent = msg;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 1800);
+      }
+
+      /* ================== MODAL ================== */
+      function abrirModal(titulo, camposHTML, onSubmit) {
+        modalTitle.textContent = titulo || "";
+        modalFields.innerHTML = camposHTML || "";
+        modal.classList.add("show");
+        modal.style.display = "flex";
+        modalForm.onsubmit = (e) => {
+          e.preventDefault();
+          const data = Object.fromEntries(new FormData(modalForm));
+          onSubmit && onSubmit(data);
+          fecharModal();
+        };
+      }
+
+      function fecharModal() {
+        modal.classList.remove("show");
+        setTimeout(() => {
+          modal.style.display = "none";
+          try {
+            modalForm.reset();
+          } catch {}
+        }, 200);
+      }
+
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) fecharModal();
+      });
+
+      /* ================== LOCALSTORAGE ================== */
+      function salvarObrasLocal() {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(obras));
+      }
+      function carregarObrasLocal() {
+        try {
+          const raw = localStorage.getItem(CACHE_KEY);
+          return raw ? JSON.parse(raw) : [];
+        } catch {
+          return [];
+        }
+      }
+
+      /* ================== INDEXEDDB ================== */
+      function abrirDB() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open("GerenciadorObrasDB", 1);
+          request.onerror = (event) => reject(event);
+          request.onsuccess = (event) => {
+            db = event.target.result;
+            resolve(db);
+          };
+          request.onupgradeneeded = (event) => {
+            db = event.target.result;
+            if (!db.objectStoreNames.contains("obras"))
+              db.createObjectStore("obras", { keyPath: "id" });
+          };
+        });
+      }
+
+      async function salvarTudoDB() {
+        if (!db) await abrirDB();
+        const tx = db.transaction("obras", "readwrite");
+        const store = tx.objectStore("obras");
+        try {
+          store.clear();
+        } catch (e) {}
+        obras.forEach((o) => store.put(o));
+        return tx.complete;
+      }
+
+      async function carregarTudoDB() {
+        if (!db) await abrirDB();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction("obras", "readonly");
+          const store = tx.objectStore("obras");
+          const req = store.getAll();
+          req.onsuccess = (e) => resolve(e.target.result || []);
+          req.onerror = (e) => reject(e);
+        });
+      }
+
+      /* ================== UTILITÁRIOS ================== */
+      function gerarId() {
+        return Date.now() + Math.floor(Math.random() * 1000);
+      }
+
+      function calcularProgressoGeral(obra) {
+        if (!obra.etapas || !obra.etapas.length)
+          return Number(obra.progresso || 0);
+        const concluidas = obra.etapas.filter((e) => {
+          const s = (e.status || "").toLowerCase();
+          return s === "concluída" || s === "concluida" || s === "concluido";
+        }).length;
+        return Math.round((concluidas / obra.etapas.length) * 100);
+      }
+
+      function calcularOrcamentoAutomatico(obra) {
+        if (!obra.etapas || !obra.etapas.length) return obra.orcamento || 0;
+        let total = 0;
+        obra.etapas.forEach((etapa) =>
+          (etapa.materiais || []).forEach((m) => {
+            total += (Number(m.quantidade) || 0) * (Number(m.custoUnit) || 0);
+          })
+        );
+        return total;
+      }
+
+      function getClasseData(data) {
+        if (!data) return { classe: "data-sem", icone: "⚠️" };
+        const hoje = new Date().toISOString().split("T")[0];
+        if (data < hoje) return { classe: "data-atrasada", icone: "❌" };
+        return { classe: "data-ok", icone: "✅" };
+      }
+
+      /* ================== RENDERIZAÇÃO ================== */
+      function exibirMateriais(obra, etapa) {
+        const div = document.getElementById(`materiais-${obra.id}-${etapa.id}`);
+        if (!div) return;
+        div.innerHTML = "";
+        (etapa.materiais || []).forEach((mat) => {
+          const mDiv = document.createElement("div");
+          mDiv.className = "material";
+          mDiv.textContent = `${mat.nome || "-"} - Qtd: ${
+            mat.quantidade || 0
+          } - Custo: ${(Number(mat.custoUnit) || 0).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          })}`;
+          mDiv.appendChild(
+            criarBotao("Editar", "btn-editar", () =>
+              editarMaterial(obra.id, etapa.id, mat.id)
+            )
+          );
+          mDiv.appendChild(
+            criarBotao("Excluir", "btn-excluir", () =>
+              excluirMaterial(obra.id, etapa.id, mat.id)
+            )
+          );
+          div.appendChild(mDiv);
+        });
+      }
+
+      function exibirEtapas(obra) {
+        const div = document.getElementById(`etapas-${obra.id}`);
+        if (!div) return;
+        div.innerHTML = "";
+        (obra.etapas || []).forEach((etapa) => {
+          const eDiv = document.createElement("div");
+          eDiv.className = "etapa";
+          const { classe, icone } = getClasseData(etapa.data || "");
+          eDiv.innerHTML = `<strong>${etapa.nome || "-"}</strong> (Status: ${
+            etapa.status || "-"
+          })<br><small class="${classe}">${icone} 📅 ${
+            etapa.data || "sem data"
+          }</small>`;
+          eDiv.appendChild(
+            criarBotao("Editar", "btn-editar", () =>
+              editarEtapa(obra.id, etapa.id)
+            )
+          );
+          eDiv.appendChild(
+            criarBotao("Excluir", "btn-excluir", () =>
+              excluirEtapa(obra.id, etapa.id)
+            )
+          );
+          eDiv.appendChild(
+            criarBotao("Adicionar Material", "btn-add", () =>
+              abrirModalAdicionarMaterial(obra.id, etapa.id)
+            )
+          );
+          const divMateriais = document.createElement("div");
+          divMateriais.id = `materiais-${obra.id}-${etapa.id}`;
+          eDiv.appendChild(divMateriais);
+          div.appendChild(eDiv);
+          exibirMateriais(obra, etapa);
+        });
+      }
+
+      function atualizarTela() {
+        listaObrasDiv.innerHTML = "";
+        if (!obras || !obras.length) {
+          listaObrasDiv.innerHTML = "<p>Nenhuma obra cadastrada.</p>";
+          salvarObrasLocal();
+          salvarTudoDB();
+          return;
+        }
+
+        obras.forEach((obra) => {
+          const div = document.createElement("div");
+          div.className = "obra";
+
+          const progressoSafe = calcularProgressoGeral(obra);
+          const orcamentoSafe = calcularOrcamentoAutomatico(obra);
+          const valorData =
+            progressoSafe <= 30
+              ? "low"
+              : progressoSafe <= 70
+              ? "medium"
+              : "high";
+
+          div.innerHTML = `
+            <h3>${obra.nome || "-"}</h3>
+            <p><strong>Localização:</strong> ${obra.localizacao || "-"}</p>
+            <p><strong>Responsável:</strong> ${obra.responsavel || "-"}</p>
+            <p><strong>Status:</strong> ${obra.status || "-"}</p>
+            <p><strong>Orçamento:</strong> ${orcamentoSafe.toLocaleString(
+              "pt-BR",
+              {
+                style: "currency",
+                currency: "BRL",
+              }
+            )}</p>
+            <div class="barra"><div class="progresso" style="width:${progressoSafe}%" data-value="${valorData}">${progressoSafe}%</div></div>
+            <h4>Etapas</h4><div id="etapas-${obra.id}"></div>
+          `;
+
+          div.appendChild(
+            criarBotao("Editar", "btn-editar", () => editarObra(obra.id))
+          );
+          div.appendChild(
+            criarBotao("Excluir", "btn-excluir", () => excluirObra(obra.id))
+          );
+          div.appendChild(
+            criarBotao("Adicionar Etapa", "btn-add", () =>
+              abrirModalAdicionarEtapa(obra.id)
+            )
+          );
+          div.appendChild(
+            criarBotao("Ver Etapas", "btn-view", () => abrirTelaEtapas(obra.id))
+          );
+
+          listaObrasDiv.appendChild(div);
+          exibirEtapas(obra);
+        });
+
+        salvarObrasLocal();
+        salvarTudoDB();
+      }
+
+      /* ================== CRUD OBRAS ================== */
+      document.getElementById("formObra").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const novaObra = {
+          id: gerarId(),
+          nome: document.getElementById("nome").value,
+          localizacao: document.getElementById("localizacao").value,
+          responsavel: document.getElementById("responsavel").value,
+          status: document.getElementById("status").value,
+          progresso: parseInt(document.getElementById("progresso").value) || 0,
+          orcamento:
+            formatarOrcamento(document.getElementById("orcamento").value) || 0,
+          etapas: [],
+        };
+        obras.push(novaObra);
+        atualizarTela();
+        e.target.reset();
+        mostrarToast("Obra cadastrada com sucesso!");
+      });
+
+      function excluirObra(id) {
+        if (!confirm("Excluir esta obra?")) return;
+        obras = obras.filter((o) => o.id !== id);
+        atualizarTela();
+        mostrarToast("Obra excluída!");
+      }
+
+      function editarObra(id) {
+        const obra = obras.find((o) => o.id === id);
+        if (!obra) return;
+        abrirModal(
+          "Editar Obra",
+          `
+          <label>Nome:</label><input type="text" name="nome" value="${
+            obra.nome
+          }" required>
+          <label>Localização:</label><input type="text" name="localizacao" value="${
+            obra.localizacao
+          }" required>
+          <label>Responsável:</label><input type="text" name="responsavel" value="${
+            obra.responsavel
+          }">
+          <label>Status:</label>
+          <select name="status">
+            <option ${
+              obra.status === "Inicial" ? "selected" : ""
+            }>Inicial</option>
+            <option ${
+              obra.status === "Em andamento" ? "selected" : ""
+            }>Em andamento</option>
+            <option ${
+              obra.status === "Concluída" ? "selected" : ""
+            }>Concluída</option>
+          </select>
+          <label>Progresso (%):</label><input type="number" name="progresso" min="0" max="100" value="${
+            obra.progresso
+          }">
+          <label>Orçamento:</label><input type="number" step="0.01" name="orcamento" value="${
+            obra.orcamento
+          }">
+        `,
+          (data) => {
+            Object.assign(obra, data, {
+              progresso: Number(data.progresso),
+              orcamento: Number(data.orcamento),
+            });
+            atualizarTela();
+            mostrarToast("Obra editada!");
+          }
+        );
+      }
+
+      /* ================== CRUD ETAPAS ================== */
+      function abrirModalAdicionarEtapa(obraId) {
+        const obra = obras.find((o) => o.id === obraId);
+        if (!obra) return;
+        abrirModal(
+          "Adicionar Etapa",
+          `
+          <label>Nome:</label><input type="text" name="nome" required>
+          <label>Status:</label>
+          <select name="status">
+            <option>Inicial</option>
+            <option>Em andamento</option>
+            <option>Concluída</option>
+          </select>
+          <label>Data (AAAA-MM-DD):</label><input type="date" name="data">
+        `,
+          (data) => {
+            obra.etapas.push({ id: gerarId(), ...data, materiais: [] });
+            atualizarTela();
+            mostrarToast("Etapa adicionada!");
+          }
+        );
+      }
+
+      function excluirEtapa(obraId, etapaId) {
+        const obra = obras.find((o) => o.id === obraId);
+        if (!obra) return;
+        obra.etapas = obra.etapas.filter((e) => e.id !== etapaId);
+        atualizarTela();
+        mostrarToast("Etapa excluída!");
+      }
+
+      function editarEtapa(obraId, etapaId) {
+        const obra = obras.find((o) => o.id === obraId);
+        if (!obra) return;
+        const etapa = obra.etapas.find((e) => e.id === etapaId);
+        if (!etapa) return;
+        abrirModal(
+          "Editar Etapa",
+          `
+          <label>Nome:</label><input type="text" name="nome" value="${
+            etapa.nome
+          }" required>
+          <label>Status:</label>
+          <select name="status">
+            <option ${
+              etapa.status === "Inicial" ? "selected" : ""
+            }>Inicial</option>
+            <option ${
+              etapa.status === "Em andamento" ? "selected" : ""
+            }>Em andamento</option>
+            <option ${
+              etapa.status === "Concluída" ? "selected" : ""
+            }>Concluída</option>
+          </select>
+          <label>Data:</label><input type="date" name="data" value="${
+            etapa.data || ""
+          }">
+        `,
+          (data) => {
+            Object.assign(etapa, data);
+            atualizarTela();
+            mostrarToast("Etapa editada!");
+          }
+        );
+      }
+
+      /* ================== CRUD MATERIAIS ================== */
+      function abrirModalAdicionarMaterial(obraId, etapaId) {
+        const obra = obras.find((o) => o.id === obraId);
+        if (!obra) return;
+        const etapa = obra.etapas.find((e) => e.id === etapaId);
+        if (!etapa) return;
+        abrirModal(
+          "Adicionar Material",
+          `
+          <label>Nome:</label><input type="text" name="nome" required>
+          <label>Quantidade:</label><input type="number" name="quantidade" min="0" value="0">
+          <label>Custo Unitário:</label><input type="number" name="custoUnit" step="0.01" value="0">
+        `,
+          (data) => {
+            etapa.materiais.push({ id: gerarId(), ...data });
+            atualizarTela();
+            mostrarToast("Material adicionado!");
+          }
+        );
+      }
+
+      function excluirMaterial(obraId, etapaId, materialId) {
+        const obra = obras.find((o) => o.id === obraId);
+        if (!obra) return;
+        const etapa = obra.etapas.find((e) => e.id === etapaId);
+        if (!etapa) return;
+        etapa.materiais = etapa.materiais.filter((m) => m.id !== materialId);
+        atualizarTela();
+        mostrarToast("Material excluído!");
+      }
+
+      function editarMaterial(obraId, etapaId, materialId) {
+        const obra = obras.find((o) => o.id === obraId);
+        if (!obra) return;
+        const etapa = obra.etapas.find((e) => e.id === etapaId);
+        if (!etapa) return;
+        const mat = etapa.materiais.find((m) => m.id === materialId);
+        if (!mat) return;
+        abrirModal(
+          "Editar Material",
+          `
+          <label>Nome:</label><input type="text" name="nome" value="${
+            mat.nome
+          }" required>
+          <label>Quantidade:</label><input type="number" name="quantidade" min="0" value="${
+            mat.quantidade || 0
+          }">
+          <label>Custo Unitário:</label><input type="number" name="custoUnit" step="0.01" value="${
+            mat.custoUnit || 0
+          }">
+        `,
+          (data) => {
+            Object.assign(mat, data);
+            atualizarTela();
+            mostrarToast("Material editado!");
+          }
+        );
+      }
+
+      /* ================== TELA ETAPAS ================== */
+      let obraSelecionadaId = null;
+      function abrirTelaEtapas(obraId) {
+        obraSelecionadaId = obraId;
+        const obra = obras.find((o) => o.id === obraId);
+        if (!obra) return;
+        document.getElementById("lista-etapas").innerHTML = "";
+        obra.etapas.forEach((etapa) => {
+          const div = document.createElement("div");
+          const { classe, icone } = getClasseData(etapa.data);
+          div.innerHTML = `<strong>${etapa.nome}</strong> - ${
+            etapa.status
+          } - <span class="${classe}">${icone} ${
+            etapa.data || "sem data"
+          }</span>`;
+          div.appendChild(
+            criarBotao("Editar", "btn-editar", () =>
+              editarEtapa(obraId, etapa.id)
+            )
+          );
+          div.appendChild(
+            criarBotao("Excluir", "btn-excluir", () =>
+              excluirEtapa(obraId, etapa.id)
+            )
+          );
+          div.appendChild(
+            criarBotao("Adicionar Material", "btn-add", () =>
+              abrirModalAdicionarMaterial(obraId, etapa.id)
+            )
+          );
+          const matDiv = document.createElement("div");
+          matDiv.id = `materiais-${obra.id}-${etapa.id}`;
+          div.appendChild(matDiv);
+          document.getElementById("lista-etapas").appendChild(div);
+          exibirMateriais(obra, etapa);
+        });
+        mostrarTela("etapas");
+      } 
+      function exportarExcel(){
+    let csv = "Nome,Local,Responsável,Status,Progresso,Orçamento\n";
+    obras.forEach(o=>{
+        csv += `${o.nome},${o.localizacao},${o.responsavel},${o.status},${o.progresso}%,${o.orcamento}\n`;
+    });
+    const blob = new Blob([csv],{type:"text/csv"});
+    const link = document.createElement("a");
+    link.href=URL.createObjectURL(blob);
+    link.download="obras.csv";
+    link.click();
+}
+
+
+      /* ================== EXPORTAÇÃO ================== */
+      function exportarPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        let y = 10;
+
+        obras.forEach((obra, obraIndex) => {
+          if (obraIndex > 0) doc.addPage();
+
+          // ===== TABELA DA OBRA (sem Progresso) =====
+          doc.autoTable({
+            startY: y,
+            head: [["Campo", "Valor"]],
+            body: [
+              ["Nome", obra.nome || "-"],
+              ["Localização", obra.localizacao || "-"],
+              ["Responsável", obra.responsavel || "-"],
+              ["Status", obra.status || "-"],
+              [
+                "Orçamento",
+                (obra.orcamento || 0).toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                }),
+              ],
+            ],
+            theme: "grid",
+            headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+            styles: { fontSize: 11 },
+          });
+
+          // atualizar Y após tabela
+          y = doc.lastAutoTable.finalY + 8;
+
+          // ===== BARRA DE PROGRESSO =====
+          const progresso = obra.progresso || 0;
+          const barraX = 70;
+          const barraY = y;
+          const barraLargura = 80;
+          const barraAltura = 6;
+          const progressoLargura = (barraLargura * progresso) / 100;
+
+          // fundo da barra
+          doc.setFillColor(200, 200, 200);
+          doc.rect(barraX, barraY, barraLargura, barraAltura, "F");
+
+          // barra colorida
+          let cor = [67, 160, 71]; // verde
+          if (progresso <= 30) cor = [229, 57, 53]; // vermelho
+          else if (progresso <= 70) cor = [251, 192, 45]; // amarelo
+          doc.setFillColor(...cor);
+          doc.rect(barraX, barraY, progressoLargura, barraAltura, "F");
+
+          // texto do progresso
+          doc.setFontSize(10);
+          doc.setTextColor(0, 0, 0);
+          doc.text(
+            progresso + "%",
+            barraX + barraLargura + 5,
+            barraY + barraAltura
+          );
+
+          // avançar Y para próximas seções
+          y += barraAltura + 8;
+
+          // ===== ETAPAS =====
+          if (obra.etapas && obra.etapas.length) {
+            obra.etapas.forEach((etapa, etapaIndex) => {
+              doc.setFontSize(11);
+              doc.setFont(undefined, "bold");
+              doc.text(`Etapa ${etapaIndex + 1}: ${etapa.nome}`, 10, y);
+              y += 5;
+
+              doc.autoTable({
+                startY: y,
+                head: [["Status", "Data"]],
+                body: [[etapa.status || "-", etapa.data || "-"]],
+                theme: "grid",
+                headStyles: { fillColor: [26, 188, 156], textColor: 255 },
+                styles: { fontSize: 10 },
+              });
+
+              y = doc.lastAutoTable.finalY + 3;
+
+              // ===== MATERIAIS =====
+              if (etapa.materiais && etapa.materiais.length) {
+                doc.autoTable({
+                  startY: y,
+                  head: [["Nome", "Quantidade", "Custo"]],
+                  body: etapa.materiais.map((mat) => [
+                    mat.nome || "-",
+                    mat.quantidade || 0,
+                    (mat.custoUnit || 0).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }),
+                  ]),
+                  theme: "grid",
+                  headStyles: { fillColor: [155, 89, 182], textColor: 255 },
+                  styles: { fontSize: 10 },
+                });
+
+                y = doc.lastAutoTable.finalY + 5;
+              }
+            });
+          }
+        });
+
+        doc.save("obras_detalhadas.pdf");
+      }
+
+      /* ================== INICIALIZAÇÃO ================== */
+      (async function init() {
+        obras = carregarObrasLocal();
+        const dbData = await carregarTudoDB().catch(() => []);
+        if (dbData && dbData.length) obras = dbData;
+        atualizarTela();
+        
+      })();
+    </script>
+  </body>
+</html>
